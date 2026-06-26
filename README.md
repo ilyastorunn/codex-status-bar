@@ -1,4 +1,4 @@
-<video src="assets/1.mov" controls muted loop playsinline width="672"></video>
+<img width="672" alt="Codex Status Bar menu bar demo" src="assets/1.gif" />
 <br><br>
 
 <a href="https://github.com/ilyastorunn/codex-status-bar/releases/latest/download/CodexStatusBar.dmg"><img src="assets/download.png" alt="Download CodexStatusBar.dmg for macOS" width="260"></a>
@@ -12,7 +12,7 @@ A tiny macOS menu bar app that shows **Codex's live status**: an animated Codex 
 
 Inspired by [Claude Status Bar](https://github.com/m1ckc3s/claude-status-bar) by [@m1ckc3s](https://github.com/m1ckc3s). This project follows the same small local-file + menu-bar idea, adapted for Codex hooks.
 
-<video src="assets/2.mov" controls muted loop playsinline width="710"></video>
+<img width="710" alt="Codex Status Bar pets and options demo" src="assets/2.gif" />
 <br>
 
 > [!IMPORTANT]

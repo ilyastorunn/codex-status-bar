@@ -1,4 +1,4 @@
-<img width="672" height="80" alt="Codex Status Bar screen recording placeholder" src="https://github.com/user-attachments/assets/REPLACE_WITH_STATUS_BAR_GIF" />
+<video src="assets/1.mov" controls muted loop playsinline width="672"></video>
 <br><br>
 
 <a href="https://github.com/ilyastorunn/codex-status-bar/releases/latest/download/CodexStatusBar.dmg"><img src="assets/download.png" alt="Download CodexStatusBar.dmg for macOS" width="260"></a>
@@ -12,7 +12,7 @@ A tiny macOS menu bar app that shows **Codex's live status**: an animated Codex 
 
 Inspired by [Claude Status Bar](https://github.com/m1ckc3s/claude-status-bar) by [@m1ckc3s](https://github.com/m1ckc3s). This project follows the same small local-file + menu-bar idea, adapted for Codex hooks.
 
-<img width="710" height="714" alt="Codex Status Bar demo placeholder" src="https://github.com/user-attachments/assets/REPLACE_WITH_DEMO_GIF" />
+<video src="assets/2.mov" controls muted loop playsinline width="710"></video>
 <br>
 
 > [!IMPORTANT]
@@ -28,14 +28,31 @@ Inspired by [Claude Status Bar](https://github.com/m1ckc3s/claude-status-bar) by
 - **Thinking / working** - the icon animates, with a live `1m 1s` timer.
 - **Running a tool** - a short label (`Editing`, `Reading`, `Running command`, `Using tool`, ...).
 - **Awaiting permission** - a paused yellow dot when Codex is waiting for your approval.
+- **Codex Pets** - use your local Codex app pets as the menu bar icon, with the same atlas animations for thinking, running, waiting, and idle states.
+- **Notification sounds** - optional short sounds for permission requests and completed work.
 - **Idle / done** - rests on the Codex icon.
 
 Everything is controlled from the menu:
 
 - **Show timer:** toggle the elapsed `1m 1s` clock.
+- **Show status text:** choose between icon-only mode and icon + label mode.
+- **Play notification sounds:** toggle the permission/completion sounds.
 - **Use system icon color:** switch between the adaptive macOS menu bar glyph and a state-tinted Codex glyph.
+- **Icon Style:** switch between the Codex icon and Codex Pets.
+- **Pet:** choose which installed Codex pet should be used in the menu bar.
 - **Reveal State File:** open the local status JSON in Finder.
 - **Reset Status:** clear the current menu bar state.
+
+## Codex Pets
+
+Codex Status Bar can use the same local pet spritesheets that the Codex desktop app stores under `~/.codex/pets`. Select **Icon Style -> Pet**, then choose a pet from the **Pet** submenu.
+
+Pet mode supports two display styles:
+
+- **Pet only:** hide status text for a compact animated companion in the menu bar.
+- **Pet + status text:** show the pet next to labels like `Thinking...`, `Running command`, and `Awaiting permission`.
+
+The app does not generate or bundle OpenAI pet artwork. It only reads pets already installed by your local Codex app.
 
 ## Where it works
 

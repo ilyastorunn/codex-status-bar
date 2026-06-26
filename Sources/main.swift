@@ -49,11 +49,13 @@ final class StatusController: NSObject, NSMenuDelegate {
 
     var showTimer = true
     var showStatusText = true
+    var playNotificationSounds = true
     var iconSystem = false
     var iconStyle: IconStyle = .codex
     var selectedPetId = ""
     lazy var pets: [PetInfo] = loadPets()
     var petImageCache: [String: NSImage] = [:]
+    var lastSoundState: State = .idle
     lazy var installedCodexIcon: NSImage? = loadInstalledCodexIcon()
     lazy var installedCodexTemplateIcon: NSImage? = loadInstalledCodexTemplateIcon()
 
@@ -70,6 +72,9 @@ final class StatusController: NSObject, NSMenuDelegate {
         }
         if defaults.object(forKey: "showStatusText") != nil {
             showStatusText = defaults.bool(forKey: "showStatusText")
+        }
+        if defaults.object(forKey: "playNotificationSounds") != nil {
+            playNotificationSounds = defaults.bool(forKey: "playNotificationSounds")
         }
         if defaults.object(forKey: "iconSystem") != nil {
             iconSystem = defaults.bool(forKey: "iconSystem")
@@ -111,6 +116,11 @@ final class StatusController: NSObject, NSMenuDelegate {
         statusTextItem.target = self
         statusTextItem.state = showStatusText ? .on : .off
         menu.addItem(statusTextItem)
+
+        let soundsItem = NSMenuItem(title: "Play notification sounds", action: #selector(toggleNotificationSounds), keyEquivalent: "")
+        soundsItem.target = self
+        soundsItem.state = playNotificationSounds ? .on : .off
+        menu.addItem(soundsItem)
 
         let colorItem = NSMenuItem(title: "Use system icon color", action: #selector(toggleIconColor), keyEquivalent: "")
         colorItem.target = self
@@ -171,6 +181,11 @@ final class StatusController: NSObject, NSMenuDelegate {
         showStatusText.toggle()
         UserDefaults.standard.set(showStatusText, forKey: "showStatusText")
         applyTitle()
+    }
+
+    @objc func toggleNotificationSounds() {
+        playNotificationSounds.toggle()
+        UserDefaults.standard.set(playNotificationSounds, forKey: "playNotificationSounds")
     }
 
     @objc func toggleIconColor() {
@@ -277,7 +292,10 @@ final class StatusController: NSObject, NSMenuDelegate {
         case .waiting:
             logRender(state: .waiting, label: label, startedAt: 0)
             render(state: .waiting, label: label.isEmpty ? "Waiting" : label, startedAt: 0)
-        case .done, .idle:
+        case .done:
+            logRender(state: .done, label: "", startedAt: 0)
+            render(state: .done, label: "", startedAt: 0)
+        case .idle:
             logRender(state: .idle, label: "", startedAt: 0)
             render(state: .idle, label: "", startedAt: 0)
         }
@@ -304,6 +322,7 @@ final class StatusController: NSObject, NSMenuDelegate {
     }
 
     func render(state: State, label: String, startedAt: Double) {
+        playSoundIfNeeded(for: state)
         activeState = state
         activeLabel = label
         activeStartedAt = startedAt
@@ -328,6 +347,25 @@ final class StatusController: NSObject, NSMenuDelegate {
             statusItem.button?.image = icon(for: state, frame: frameIndex)
         }
         applyTitle()
+    }
+
+    func playSoundIfNeeded(for state: State) {
+        guard state != lastSoundState else { return }
+        lastSoundState = state
+        guard playNotificationSounds else { return }
+
+        switch state {
+        case .permission:
+            playSystemSound(named: "Ping")
+        case .done:
+            playSystemSound(named: "Glass")
+        case .idle, .thinking, .tool, .waiting:
+            return
+        }
+    }
+
+    func playSystemSound(named name: String) {
+        NSSound(named: NSSound.Name(name))?.play()
     }
 
     func animate() {

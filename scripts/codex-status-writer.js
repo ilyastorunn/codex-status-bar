@@ -163,10 +163,7 @@ function writeStateForEvent(payload) {
     }
     case "PostToolUse": {
       if (!isActiveTurn(payload, prev)) return;
-      if (prev.state === "permission") {
-        const waitMs = Math.max(0, Number(prev.minVisibleUntilMs || 0) - nowMs);
-        wait(waitMs);
-      } else {
+      if (prev.state !== "permission") {
         const waitMs = Math.max(0, Number(prev.minVisibleUntilMs || prev.visibleUntilMs || 0) - nowMs);
         if (prev.state === "tool" && waitMs > 0) {
           wait(waitMs);

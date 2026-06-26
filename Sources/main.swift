@@ -12,7 +12,13 @@ final class StatusController: NSObject, NSMenuDelegate {
 
     enum IconStyle: String {
         case codex
-        case mascot
+        case pet
+    }
+
+    struct PetInfo {
+        let id: String
+        let displayName: String
+        let spritesheetPath: String
     }
 
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -39,6 +45,9 @@ final class StatusController: NSObject, NSMenuDelegate {
     var showTimer = true
     var iconSystem = false
     var iconStyle: IconStyle = .codex
+    var selectedPetId = ""
+    lazy var pets: [PetInfo] = loadPets()
+    var petImageCache: [String: NSImage] = [:]
     lazy var installedCodexIcon: NSImage? = loadInstalledCodexIcon()
     lazy var installedCodexTemplateIcon: NSImage? = loadInstalledCodexTemplateIcon()
 
@@ -60,6 +69,7 @@ final class StatusController: NSObject, NSMenuDelegate {
            let savedIconStyle = IconStyle(rawValue: rawIconStyle) {
             iconStyle = savedIconStyle
         }
+        selectedPetId = defaults.string(forKey: "selectedPetId") ?? ""
 
         let menu = NSMenu()
         menu.delegate = self
@@ -99,12 +109,26 @@ final class StatusController: NSObject, NSMenuDelegate {
         codexItem.target = self
         codexItem.state = iconStyle == .codex ? .on : .off
         iconStyleMenu.addItem(codexItem)
-        let mascotItem = NSMenuItem(title: "Mascot", action: #selector(useMascotIconStyle), keyEquivalent: "")
-        mascotItem.target = self
-        mascotItem.state = iconStyle == .mascot ? .on : .off
-        iconStyleMenu.addItem(mascotItem)
+        let petItem = NSMenuItem(title: "Pet", action: #selector(usePetIconStyle), keyEquivalent: "")
+        petItem.target = self
+        petItem.state = iconStyle == .pet ? .on : .off
+        iconStyleMenu.addItem(petItem)
         iconStyleItem.submenu = iconStyleMenu
         menu.addItem(iconStyleItem)
+
+        if !pets.isEmpty {
+            let petsItem = NSMenuItem(title: "Pet", action: nil, keyEquivalent: "")
+            let petsMenu = NSMenu()
+            for pet in pets {
+                let item = NSMenuItem(title: pet.displayName, action: #selector(selectPet(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = pet.id
+                item.state = effectivePet()?.id == pet.id ? .on : .off
+                petsMenu.addItem(item)
+            }
+            petsItem.submenu = petsMenu
+            menu.addItem(petsItem)
+        }
 
         menu.addItem(.separator())
 
@@ -139,13 +163,22 @@ final class StatusController: NSObject, NSMenuDelegate {
         setIconStyle(.codex)
     }
 
-    @objc func useMascotIconStyle() {
-        setIconStyle(.mascot)
+    @objc func usePetIconStyle() {
+        setIconStyle(.pet)
     }
 
     func setIconStyle(_ style: IconStyle) {
         iconStyle = style
         UserDefaults.standard.set(style.rawValue, forKey: "iconStyle")
+        render(state: activeState, label: activeLabel, startedAt: activeStartedAt)
+    }
+
+    @objc func selectPet(_ sender: NSMenuItem) {
+        guard let petId = sender.representedObject as? String else { return }
+        selectedPetId = petId
+        iconStyle = .pet
+        UserDefaults.standard.set(petId, forKey: "selectedPetId")
+        UserDefaults.standard.set(IconStyle.pet.rawValue, forKey: "iconStyle")
         render(state: activeState, label: activeLabel, startedAt: activeStartedAt)
     }
 
@@ -328,8 +361,8 @@ final class StatusController: NSObject, NSMenuDelegate {
         if state == .permission {
             return dotIcon(color: color)
         }
-        if iconStyle == .mascot {
-            return mascotIcon(state: state, frame: frame)
+        if iconStyle == .pet, let pet = effectivePet(), let petImage = petImage(for: pet) {
+            return petIcon(source: petImage, state: state, frame: frame)
         }
         if iconSystem, let installedCodexTemplateIcon {
             return appIcon(source: installedCodexTemplateIcon, state: state, frame: frame, isTemplate: true)
@@ -423,57 +456,74 @@ final class StatusController: NSObject, NSMenuDelegate {
         return image
     }
 
-    func mascotIcon(state: State, frame: Int) -> NSImage {
+    func loadPets() -> [PetInfo] {
+        let petsDir = (NSHomeDirectory() as NSString).appendingPathComponent(".codex/pets")
+        guard let entries = try? FileManager.default.contentsOfDirectory(atPath: petsDir) else { return [] }
+
+        var byId: [String: PetInfo] = [:]
+        for entry in entries.sorted() {
+            let dir = (petsDir as NSString).appendingPathComponent(entry)
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: dir, isDirectory: &isDir), isDir.boolValue else { continue }
+            let manifestPath = (dir as NSString).appendingPathComponent("pet.json")
+            guard let data = FileManager.default.contents(atPath: manifestPath),
+                  let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let id = manifest["id"] as? String,
+                  let displayName = manifest["displayName"] as? String else { continue }
+            let spritesheetName = manifest["spritesheetPath"] as? String ?? "spritesheet.webp"
+            let spritesheetPath = (dir as NSString).appendingPathComponent(spritesheetName)
+            guard FileManager.default.fileExists(atPath: spritesheetPath) else { continue }
+            byId[id] = PetInfo(id: id, displayName: displayName, spritesheetPath: spritesheetPath)
+        }
+
+        return byId.values.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+    }
+
+    func effectivePet() -> PetInfo? {
+        if let selected = pets.first(where: { $0.id == selectedPetId }) {
+            return selected
+        }
+        return pets.first
+    }
+
+    func petImage(for pet: PetInfo) -> NSImage? {
+        if let cached = petImageCache[pet.id] {
+            return cached
+        }
+        guard let image = NSImage(contentsOfFile: pet.spritesheetPath) else { return nil }
+        petImageCache[pet.id] = image
+        return image
+    }
+
+    func petIcon(source: NSImage, state: State, frame: Int) -> NSImage {
         let size: CGFloat = 18
         let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { _ in
             let active = state == .thinking || state == .tool
-            let bodyColor = state == .tool ? self.blue : self.codexGreen
-            let yBob: CGFloat = active ? (frame % 6 < 3 ? 1 : 0) : 0
-            let blink = state == .thinking && frame % 12 == 0
-            let fast = state == .tool
-
-            if active {
-                bodyColor.withAlphaComponent(0.16 + 0.12 * self.pulse(frame: frame, index: 1)).setFill()
-                NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: 14, height: 14)).fill()
-            }
-
-            self.pixelFill(NSRect(x: 4, y: 4 + yBob, width: 10, height: 9), color: bodyColor)
-            self.pixelFill(NSRect(x: 5, y: 3 + yBob, width: 8, height: 1), color: bodyColor.withAlphaComponent(0.78))
-            self.pixelFill(NSRect(x: 3, y: 7 + yBob, width: 1, height: 4), color: bodyColor.withAlphaComponent(0.82))
-            self.pixelFill(NSRect(x: 14, y: 7 + yBob, width: 1, height: 4), color: bodyColor.withAlphaComponent(0.82))
-            self.pixelStroke(NSRect(x: 4, y: 4 + yBob, width: 10, height: 9), color: NSColor.black.withAlphaComponent(0.42))
-
-            let eyeColor = NSColor.white.withAlphaComponent(0.95)
-            if blink {
-                self.pixelFill(NSRect(x: 6, y: 9 + yBob, width: 2, height: 1), color: eyeColor)
-                self.pixelFill(NSRect(x: 10, y: 9 + yBob, width: 2, height: 1), color: eyeColor)
-            } else {
-                self.pixelFill(NSRect(x: 6, y: 8 + yBob, width: 2, height: 2), color: eyeColor)
-                self.pixelFill(NSRect(x: 10, y: 8 + yBob, width: 2, height: 2), color: eyeColor)
-                self.pixelFill(NSRect(x: fast ? 7 : 6, y: 8 + yBob, width: 1, height: 1), color: NSColor.black.withAlphaComponent(0.45))
-                self.pixelFill(NSRect(x: fast ? 11 : 10, y: 8 + yBob, width: 1, height: 1), color: NSColor.black.withAlphaComponent(0.45))
-            }
-
-            let antennaX: CGFloat = fast ? (frame % 2 == 0 ? 8 : 10) : 9
-            self.pixelFill(NSRect(x: antennaX, y: 13 + yBob, width: 1, height: 2), color: bodyColor)
-            self.pixelFill(NSRect(x: antennaX - 1, y: 15 + yBob, width: 3, height: 1), color: bodyColor.withAlphaComponent(active ? 0.95 : 0.72))
-
+            let columns = 8
+            let cellWidth: CGFloat = 192
+            let cellHeight: CGFloat = 208
+            let column = active ? frame % columns : 0
+            let row = 0
+            let sourceRect = NSRect(
+                x: CGFloat(column) * cellWidth,
+                y: CGFloat(row) * cellHeight,
+                width: cellWidth,
+                height: cellHeight
+            )
+            let drawHeight: CGFloat = active ? 18 : 17
+            let drawWidth = drawHeight * (cellWidth / cellHeight)
+            let originX = (size - drawWidth) / 2
+            let originY = (size - drawHeight) / 2
+            source.draw(
+                in: NSRect(x: originX, y: originY, width: drawWidth, height: drawHeight),
+                from: sourceRect,
+                operation: .sourceOver,
+                fraction: 1
+            )
             return true
         }
         image.isTemplate = false
         return image
-    }
-
-    func pixelFill(_ rect: NSRect, color: NSColor) {
-        color.setFill()
-        NSBezierPath(rect: rect).fill()
-    }
-
-    func pixelStroke(_ rect: NSRect, color: NSColor) {
-        color.setStroke()
-        let path = NSBezierPath(rect: rect)
-        path.lineWidth = 1
-        path.stroke()
     }
 
     func codexIcon(color: NSColor?, state: State, frame: Int) -> NSImage {

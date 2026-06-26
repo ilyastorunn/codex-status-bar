@@ -123,8 +123,10 @@ function activeState(payload, now, startedAt, state, label, toolName) {
   };
 }
 
-function permissionLatched(prev, nowMs) {
-  return prev.state === "permission" && Number(prev.permissionUntilMs || 0) > nowMs;
+function wait(ms) {
+  if (ms > 0) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  }
 }
 
 function writeStateForEvent(payload) {
@@ -161,16 +163,14 @@ function writeStateForEvent(payload) {
     }
     case "PostToolUse": {
       if (!isActiveTurn(payload, prev)) return;
-      if (permissionLatched(prev, nowMs)) {
-        writeJsonAtomic(statePath, {
-          ...prev,
-          ts: now,
-        });
-        return;
-      }
-      const waitMs = Math.max(0, Number(prev.minVisibleUntilMs || prev.visibleUntilMs || 0) - nowMs);
-      if (prev.state === "tool" && waitMs > 0) {
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, waitMs);
+      if (prev.state === "permission") {
+        const waitMs = Math.max(0, Number(prev.minVisibleUntilMs || 0) - nowMs);
+        wait(waitMs);
+      } else {
+        const waitMs = Math.max(0, Number(prev.minVisibleUntilMs || prev.visibleUntilMs || 0) - nowMs);
+        if (prev.state === "tool" && waitMs > 0) {
+          wait(waitMs);
+        }
       }
       const afterWaitNow = Math.floor(Date.now() / 1000);
       state = "thinking";
@@ -186,7 +186,7 @@ function writeStateForEvent(payload) {
       startedAt = 0;
       writeJsonAtomic(statePath, {
         ...activeState(payload, now, startedAt, state, label, toolName),
-        permissionUntilMs: nowMs + minPermissionVisibleMs,
+        minVisibleUntilMs: nowMs + minPermissionVisibleMs,
       });
       return;
     case "Stop":

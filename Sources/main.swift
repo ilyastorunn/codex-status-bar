@@ -152,6 +152,7 @@ final class StatusController: NSObject, NSMenuDelegate {
         let startedAt = (current["startedAt"] as? NSNumber)?.doubleValue ?? 0
         let ts = (current["ts"] as? NSNumber)?.doubleValue ?? 0
         let visibleUntilMs = (current["visibleUntilMs"] as? NSNumber)?.doubleValue ?? 0
+        let permissionUntilMs = (current["permissionUntilMs"] as? NSNumber)?.doubleValue ?? 0
 
         if [.thinking, .tool, .permission, .waiting].contains(state), ts > 0 {
             let age = Date().timeIntervalSince1970 - ts
@@ -162,6 +163,11 @@ final class StatusController: NSObject, NSMenuDelegate {
         }
 
         if state == .tool, visibleUntilMs > 0, Date().timeIntervalSince1970 * 1000 > visibleUntilMs {
+            state = .thinking
+            label = "Codex thinking"
+        }
+
+        if state == .permission, permissionUntilMs > 0, Date().timeIntervalSince1970 * 1000 > permissionUntilMs {
             state = .thinking
             label = "Codex thinking"
         }

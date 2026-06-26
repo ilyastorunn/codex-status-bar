@@ -10,6 +10,7 @@ const debugLogPath = path.join(dir, "hooks-discovery.jsonl");
 const statePath = path.join(dir, "state.json");
 const minToolVisibleMs = Number(process.env.CODEX_STATUSBAR_MIN_TOOL_VISIBLE_MS || 900);
 const maxToolVisibleMs = Number(process.env.CODEX_STATUSBAR_MAX_TOOL_VISIBLE_MS || 8000);
+const minPermissionVisibleMs = Number(process.env.CODEX_STATUSBAR_MIN_PERMISSION_VISIBLE_MS || 12000);
 const debugEnabled = process.env.CODEX_STATUSBAR_DEBUG === "1";
 
 let raw = "";
@@ -122,6 +123,10 @@ function activeState(payload, now, startedAt, state, label, toolName) {
   };
 }
 
+function permissionLatched(prev, nowMs) {
+  return prev.state === "permission" && Number(prev.permissionUntilMs || 0) > nowMs;
+}
+
 function writeStateForEvent(payload) {
   const nowMs = Date.now();
   const now = Math.floor(nowMs / 1000);
@@ -156,6 +161,13 @@ function writeStateForEvent(payload) {
     }
     case "PostToolUse": {
       if (!isActiveTurn(payload, prev)) return;
+      if (permissionLatched(prev, nowMs)) {
+        writeJsonAtomic(statePath, {
+          ...prev,
+          ts: now,
+        });
+        return;
+      }
       const waitMs = Math.max(0, Number(prev.minVisibleUntilMs || prev.visibleUntilMs || 0) - nowMs);
       if (prev.state === "tool" && waitMs > 0) {
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, waitMs);
@@ -172,7 +184,10 @@ function writeStateForEvent(payload) {
       state = "permission";
       label = "Awaiting permission";
       startedAt = 0;
-      writeJsonAtomic(statePath, activeState(payload, now, startedAt, state, label, toolName));
+      writeJsonAtomic(statePath, {
+        ...activeState(payload, now, startedAt, state, label, toolName),
+        permissionUntilMs: nowMs + minPermissionVisibleMs,
+      });
       return;
     case "Stop":
     case "SubagentStop":

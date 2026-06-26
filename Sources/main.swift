@@ -15,6 +15,11 @@ final class StatusController: NSObject, NSMenuDelegate {
         case pet
     }
 
+    struct PetAnimation {
+        let row: Int
+        let frames: Int
+    }
+
     struct PetInfo {
         let id: String
         let displayName: String
@@ -43,6 +48,7 @@ final class StatusController: NSObject, NSMenuDelegate {
     var lastLoggedSignature = ""
 
     var showTimer = true
+    var showStatusText = true
     var iconSystem = false
     var iconStyle: IconStyle = .codex
     var selectedPetId = ""
@@ -61,6 +67,9 @@ final class StatusController: NSObject, NSMenuDelegate {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: "showTimer") != nil {
             showTimer = defaults.bool(forKey: "showTimer")
+        }
+        if defaults.object(forKey: "showStatusText") != nil {
+            showStatusText = defaults.bool(forKey: "showStatusText")
         }
         if defaults.object(forKey: "iconSystem") != nil {
             iconSystem = defaults.bool(forKey: "iconSystem")
@@ -97,6 +106,11 @@ final class StatusController: NSObject, NSMenuDelegate {
         timerItem.target = self
         timerItem.state = showTimer ? .on : .off
         menu.addItem(timerItem)
+
+        let statusTextItem = NSMenuItem(title: "Show status text", action: #selector(toggleStatusText), keyEquivalent: "")
+        statusTextItem.target = self
+        statusTextItem.state = showStatusText ? .on : .off
+        menu.addItem(statusTextItem)
 
         let colorItem = NSMenuItem(title: "Use system icon color", action: #selector(toggleIconColor), keyEquivalent: "")
         colorItem.target = self
@@ -150,6 +164,12 @@ final class StatusController: NSObject, NSMenuDelegate {
     @objc func toggleTimer() {
         showTimer.toggle()
         UserDefaults.standard.set(showTimer, forKey: "showTimer")
+        applyTitle()
+    }
+
+    @objc func toggleStatusText() {
+        showStatusText.toggle()
+        UserDefaults.standard.set(showStatusText, forKey: "showStatusText")
         applyTitle()
     }
 
@@ -294,7 +314,7 @@ final class StatusController: NSObject, NSMenuDelegate {
         activeLabel = label
         activeStartedAt = startedAt
 
-        let shouldAnimate = state == .thinking || state == .tool
+        let shouldAnimate = shouldAnimate(state: state)
         if shouldAnimate {
             if animTimer == nil {
                 let timer = Timer(timeInterval: 0.12, repeats: true) { [weak self] _ in
@@ -325,6 +345,12 @@ final class StatusController: NSObject, NSMenuDelegate {
     func applyTitle() {
         guard let button = statusItem.button else { return }
         var text = activeLabel
+
+        if !showStatusText {
+            button.imagePosition = .imageOnly
+            button.attributedTitle = NSAttributedString(string: "")
+            return
+        }
 
         if showTimer, activeStartedAt > 0 {
             let seconds = max(0, Int(Date().timeIntervalSince1970 - activeStartedAt))
@@ -358,11 +384,11 @@ final class StatusController: NSObject, NSMenuDelegate {
             color = iconSystem ? nil : codexGreen
         }
 
-        if state == .permission {
-            return dotIcon(color: color)
-        }
         if iconStyle == .pet, let pet = effectivePet(), let petImage = petImage(for: pet) {
             return petIcon(source: petImage, state: state, frame: frame)
+        }
+        if state == .permission {
+            return dotIcon(color: color)
         }
         if iconSystem, let installedCodexTemplateIcon {
             return appIcon(source: installedCodexTemplateIcon, state: state, frame: frame, isTemplate: true)
@@ -498,19 +524,19 @@ final class StatusController: NSObject, NSMenuDelegate {
     func petIcon(source: NSImage, state: State, frame: Int) -> NSImage {
         let size: CGFloat = 18
         let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { _ in
-            let active = state == .thinking || state == .tool
-            let columns = 8
+            let animation = self.petAnimation(for: state)
             let cellWidth: CGFloat = 192
             let cellHeight: CGFloat = 208
-            let column = active ? frame % columns : 0
-            let row = 0
+            let column = frame % animation.frames
+            let row = animation.row
+            let sourceY = max(0, source.size.height - CGFloat(row + 1) * cellHeight)
             let sourceRect = NSRect(
                 x: CGFloat(column) * cellWidth,
-                y: CGFloat(row) * cellHeight,
+                y: sourceY,
                 width: cellWidth,
                 height: cellHeight
             )
-            let drawHeight: CGFloat = active ? 18 : 17
+            let drawHeight: CGFloat = self.shouldAnimate(state: state) ? 18 : 17
             let drawWidth = drawHeight * (cellWidth / cellHeight)
             let originX = (size - drawWidth) / 2
             let originY = (size - drawHeight) / 2
@@ -520,10 +546,38 @@ final class StatusController: NSObject, NSMenuDelegate {
                 operation: .sourceOver,
                 fraction: 1
             )
+            if state == .permission {
+                self.amber.setFill()
+                NSBezierPath(ovalIn: NSRect(x: size - 5.5, y: size - 5.5, width: 5, height: 5)).fill()
+            }
             return true
         }
         image.isTemplate = false
         return image
+    }
+
+    func shouldAnimate(state: State) -> Bool {
+        switch state {
+        case .thinking, .tool:
+            return true
+        case .permission, .waiting:
+            return iconStyle == .pet
+        case .idle, .done:
+            return false
+        }
+    }
+
+    func petAnimation(for state: State) -> PetAnimation {
+        switch state {
+        case .thinking:
+            return PetAnimation(row: 8, frames: 6)
+        case .tool:
+            return PetAnimation(row: 7, frames: 6)
+        case .permission, .waiting:
+            return PetAnimation(row: 6, frames: 6)
+        case .idle, .done:
+            return PetAnimation(row: 0, frames: 6)
+        }
     }
 
     func codexIcon(color: NSColor?, state: State, frame: Int) -> NSImage {

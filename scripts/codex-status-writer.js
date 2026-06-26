@@ -103,6 +103,12 @@ function isActiveTurn(payload, prev) {
   return Boolean(prev.activeSessionId);
 }
 
+function isActiveSession(payload, prev) {
+  const sessionId = sessionIdFor(payload);
+  if (!prev.activeSessionId) return true;
+  return Boolean(sessionId && sessionId === prev.activeSessionId);
+}
+
 function baseState(payload, now, startedAt, state, label, toolName) {
   return {
     state,
@@ -177,7 +183,7 @@ function writeStateForEvent(payload) {
       return;
     }
     case "PermissionRequest":
-      if (!isActiveTurn(payload, prev)) return;
+      if (!isActiveSession(payload, prev)) return;
       state = "permission";
       label = "Awaiting permission";
       startedAt = 0;

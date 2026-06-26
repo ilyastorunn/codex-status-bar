@@ -10,6 +10,11 @@ final class StatusController: NSObject, NSMenuDelegate {
         case waiting
     }
 
+    enum IconStyle: String {
+        case codex
+        case mascot
+    }
+
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     let defaultStatePath = (NSHomeDirectory() as NSString).appendingPathComponent(".codex/statusbar/state.json")
     let pollInterval: TimeInterval = 0.4
@@ -33,6 +38,7 @@ final class StatusController: NSObject, NSMenuDelegate {
 
     var showTimer = true
     var iconSystem = false
+    var iconStyle: IconStyle = .codex
     lazy var installedCodexIcon: NSImage? = loadInstalledCodexIcon()
     lazy var installedCodexTemplateIcon: NSImage? = loadInstalledCodexTemplateIcon()
 
@@ -49,6 +55,10 @@ final class StatusController: NSObject, NSMenuDelegate {
         }
         if defaults.object(forKey: "iconSystem") != nil {
             iconSystem = defaults.bool(forKey: "iconSystem")
+        }
+        if let rawIconStyle = defaults.string(forKey: "iconStyle"),
+           let savedIconStyle = IconStyle(rawValue: rawIconStyle) {
+            iconStyle = savedIconStyle
         }
 
         let menu = NSMenu()
@@ -83,6 +93,19 @@ final class StatusController: NSObject, NSMenuDelegate {
         colorItem.state = iconSystem ? .on : .off
         menu.addItem(colorItem)
 
+        let iconStyleItem = NSMenuItem(title: "Icon Style", action: nil, keyEquivalent: "")
+        let iconStyleMenu = NSMenu()
+        let codexItem = NSMenuItem(title: "Codex", action: #selector(useCodexIconStyle), keyEquivalent: "")
+        codexItem.target = self
+        codexItem.state = iconStyle == .codex ? .on : .off
+        iconStyleMenu.addItem(codexItem)
+        let mascotItem = NSMenuItem(title: "Mascot", action: #selector(useMascotIconStyle), keyEquivalent: "")
+        mascotItem.target = self
+        mascotItem.state = iconStyle == .mascot ? .on : .off
+        iconStyleMenu.addItem(mascotItem)
+        iconStyleItem.submenu = iconStyleMenu
+        menu.addItem(iconStyleItem)
+
         menu.addItem(.separator())
 
         let revealItem = NSMenuItem(title: "Reveal State File", action: #selector(revealStateFile), keyEquivalent: "")
@@ -109,6 +132,20 @@ final class StatusController: NSObject, NSMenuDelegate {
     @objc func toggleIconColor() {
         iconSystem.toggle()
         UserDefaults.standard.set(iconSystem, forKey: "iconSystem")
+        render(state: activeState, label: activeLabel, startedAt: activeStartedAt)
+    }
+
+    @objc func useCodexIconStyle() {
+        setIconStyle(.codex)
+    }
+
+    @objc func useMascotIconStyle() {
+        setIconStyle(.mascot)
+    }
+
+    func setIconStyle(_ style: IconStyle) {
+        iconStyle = style
+        UserDefaults.standard.set(style.rawValue, forKey: "iconStyle")
         render(state: activeState, label: activeLabel, startedAt: activeStartedAt)
     }
 
@@ -291,6 +328,9 @@ final class StatusController: NSObject, NSMenuDelegate {
         if state == .permission {
             return dotIcon(color: color)
         }
+        if iconStyle == .mascot {
+            return mascotIcon(state: state, frame: frame)
+        }
         if iconSystem, let installedCodexTemplateIcon {
             return appIcon(source: installedCodexTemplateIcon, state: state, frame: frame, isTemplate: true)
         }
@@ -381,6 +421,59 @@ final class StatusController: NSObject, NSMenuDelegate {
         }
         image.isTemplate = false
         return image
+    }
+
+    func mascotIcon(state: State, frame: Int) -> NSImage {
+        let size: CGFloat = 18
+        let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { _ in
+            let active = state == .thinking || state == .tool
+            let bodyColor = state == .tool ? self.blue : self.codexGreen
+            let yBob: CGFloat = active ? (frame % 6 < 3 ? 1 : 0) : 0
+            let blink = state == .thinking && frame % 12 == 0
+            let fast = state == .tool
+
+            if active {
+                bodyColor.withAlphaComponent(0.16 + 0.12 * self.pulse(frame: frame, index: 1)).setFill()
+                NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: 14, height: 14)).fill()
+            }
+
+            self.pixelFill(NSRect(x: 4, y: 4 + yBob, width: 10, height: 9), color: bodyColor)
+            self.pixelFill(NSRect(x: 5, y: 3 + yBob, width: 8, height: 1), color: bodyColor.withAlphaComponent(0.78))
+            self.pixelFill(NSRect(x: 3, y: 7 + yBob, width: 1, height: 4), color: bodyColor.withAlphaComponent(0.82))
+            self.pixelFill(NSRect(x: 14, y: 7 + yBob, width: 1, height: 4), color: bodyColor.withAlphaComponent(0.82))
+            self.pixelStroke(NSRect(x: 4, y: 4 + yBob, width: 10, height: 9), color: NSColor.black.withAlphaComponent(0.42))
+
+            let eyeColor = NSColor.white.withAlphaComponent(0.95)
+            if blink {
+                self.pixelFill(NSRect(x: 6, y: 9 + yBob, width: 2, height: 1), color: eyeColor)
+                self.pixelFill(NSRect(x: 10, y: 9 + yBob, width: 2, height: 1), color: eyeColor)
+            } else {
+                self.pixelFill(NSRect(x: 6, y: 8 + yBob, width: 2, height: 2), color: eyeColor)
+                self.pixelFill(NSRect(x: 10, y: 8 + yBob, width: 2, height: 2), color: eyeColor)
+                self.pixelFill(NSRect(x: fast ? 7 : 6, y: 8 + yBob, width: 1, height: 1), color: NSColor.black.withAlphaComponent(0.45))
+                self.pixelFill(NSRect(x: fast ? 11 : 10, y: 8 + yBob, width: 1, height: 1), color: NSColor.black.withAlphaComponent(0.45))
+            }
+
+            let antennaX: CGFloat = fast ? (frame % 2 == 0 ? 8 : 10) : 9
+            self.pixelFill(NSRect(x: antennaX, y: 13 + yBob, width: 1, height: 2), color: bodyColor)
+            self.pixelFill(NSRect(x: antennaX - 1, y: 15 + yBob, width: 3, height: 1), color: bodyColor.withAlphaComponent(active ? 0.95 : 0.72))
+
+            return true
+        }
+        image.isTemplate = false
+        return image
+    }
+
+    func pixelFill(_ rect: NSRect, color: NSColor) {
+        color.setFill()
+        NSBezierPath(rect: rect).fill()
+    }
+
+    func pixelStroke(_ rect: NSRect, color: NSColor) {
+        color.setStroke()
+        let path = NSBezierPath(rect: rect)
+        path.lineWidth = 1
+        path.stroke()
     }
 
     func codexIcon(color: NSColor?, state: State, frame: Int) -> NSImage {
